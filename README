@@ -1,0 +1,26 @@
+1. Parameters <trainModel>
+    (1) trainOriginal; # a data frame consists of 'data' and 'y', for training, required
+    (2) testOriginal; # same as trainOriginal, for testing, default NULL
+    (3) pv_thresh; # p-value threshold for selecting a variable/terminating, default 0.01
+    (4) max; # maximum variables to select for the model, default minimun of 25 and varaible amount
+    (5) var_thresh; # variance (minimum) threshold for considering a variable, default 0.01
+    (6) project; # decide whether to project variables, TURE for fspls and FALSE for fs, default TRUE
+    (7) info; # dummy parameter from previous version, default empty list
+    (8) pivot; # pivot for (multi) logistic regression, default 0
+    (9) fit_coeff <new added>; # decide whether to fit coefficients, set it as FALSE to keep consistent with the previous version that only select variables, default TRUE
+    (10) log <new added>; # log file name, run program in a silence mode with a log, default NULL
+    (11) append <new added>; # decide whether to append the outputs to the log file, default FALSE
+    (12) refit <new added>; # decide whether to refit the model at the end, default FALSE
+
+2. Bug Fixed
+    (1) add 'means = means[variables]' in line 529 and 530 (using default in previous versions)
+    (2) replace 'const_term=rep(0,length(indices))' with 'const_term=constant_term' in line 502
+    
+3. Change Log
+    (1) For multinomial problem, instead of solving (K-1) binomial problems, R package mlogit was employed to calculate the likelihood of each variable similar 
+        to the function glm in binomial problem. Thus lead to corresponding modifications in function preprocess find_best_glm, convertToBinary, fitModelShrink, 
+        fitModel getOffset, refit, evalModels, and pred.
+    (2) For output, a unified format was defined. In every step, indices of the variable selected (ind), RMSE (rms), AUC (auc) and accurary (acc) for both train
+        and test dataset (if not NULL) will be printed. AUC and accurary for linear regressions will be NA, AUC and RMSE for multinomial problems will be NA.
+    
+    
