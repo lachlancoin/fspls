@@ -32,7 +32,7 @@ elapse_start = proc.time()
 
 ## this may not be applicable to your data file
 ## when reading large data file 'fread' function from library 'data.table' could be a better choice
-datf = "data.csv" #paste(group_coin, "Users/c.zhou/fspls/data/data.csv"
+datf = "data.csv.gz" #paste(group_coin, "Users/c.zhou/fspls/data/data.csv"
 t = read.csv(datf, sep=",", header=T)
 datasets = splitData(t)
 data = datasets$train
