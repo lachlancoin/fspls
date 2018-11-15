@@ -1,14 +1,11 @@
 
 
 
-## add this only because I have some packages installed here without root privilege
-#.libPaths(c(.libPaths(),"~/R/x86_64-pc-linux-gnu-library/3.3"))
-
 library(ROCR)
 library(glmnet)
 library(nnet)
-rhome="/home/lachlan/Work/fs-pls"
-source(paste(rhome, "/fspls_lars.R",sep="")) ## VARIABLE SELECTION CODE
+rhome="."
+source(paste(rhome, "/fspls.R",sep="")) ## VARIABLE SELECTION CODE
 
 options("family"="binomial") ## for linear regression
 
@@ -37,11 +34,11 @@ elapse_start = proc.time()
 ## when reading large data file 'fread' function from library 'data.table' could be a better choice
 datf = "data.csv" #paste(group_coin, "Users/c.zhou/fspls/data/data.csv"
 t = read.csv(datf, sep=",", header=T)
-data = list(y=t[,1], data=t[,-(1)])
-## if you have test data available, otherwise leave it as NULL
-datTestf = "dataTest.csv" #"~/group-coin/c.zhou/fspls/data/dataTest.csv"
-t = read.csv(datTestf, sep=",", header=T)
-dataTest = list(y=t[,1], data=t[,-(1)])
+datasets = splitData(t)
+data = datasets$train
+dataTest = datasets$test
+
+
 
 print("LOADING DATA ELPASED TIME:")
 print(proc.time()-elapse_start)

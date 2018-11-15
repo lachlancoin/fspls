@@ -685,32 +685,34 @@ calcACC<-function(ypred,y){
     acc
 }
 
-if(FALSE){
+##splits based on a training index which is 0 or F
+split80_20<-function(x,y,train.index){
+ train<-x[train.index,]
+ test<-x[-train.index,]
+ ytr<-y[train.index]
+ yts<-y[-train.index]
+ list(train=train,test=test,ytr=ytr,yts=yts)
+}
 
-##this is the code that will run it
-###EXAMPLE 0 - all 
-
-train = makeTrainObject(data,incl=NULL,merge=NULL)
-model = trainModel(train,max=30,pv_thresh=0.01,pivot="LumA")
-assignments  = getInvLogitPr(train,model)
-countCorrect(assignments,0.0,train$y)
-
-###EXAMPLE 1
-train = makeTrainObject(data,incl=c("LumB","LumA","Basal","Her2"),merge=list(Luminal = c("LumA","LumB")))
-model = trainModel(train,max=30,pv_thresh=0.01,pivot="Luminal")
-assignments  = getInvLogitPr(train,model)
-countCorrect(assignments,0.0,train$y)
-
-###EXAMPLE 2
-train = makeTrainObject(data,incl=c("LumB","LumA"),merge=NULL)
-model = trainModel(train,max=30,pv_thresh=0.01,pivot="LumA")
-assignments  = getInvLogitPr(train,model)
-countCorrect(assignments,0.0,train$y)
-
-
-###EXAMPLE 3
-train = makeTrainObject(data,incl=NULL,merge=list(cancer=c("LumA","LumB","Basal","Her2")))
-model = trainModel(train,max=30,pv_thresh=0.01,pivot="Normal")
-assignments  = getInvLogitPr(train,model)
-countCorrect(assignments,0.0,train$y)
+#creates a split in the data
+splitData<-function(proteome,fname,  frac = 0.8, trainIndex = NA){
+	y<-proteome[,1]
+	classes = levels(as.factor(y))
+        if(!is.na(trainIndex)){
+		train.index = proteome[,trainIndex]
+			data=proteome[,-c(1, trainIndex)]
+	}else{
+		data=proteome[,-1]
+		yinclude = !is.na(y);
+		data = data[yinclude,]
+		y = y[yinclude]
+		train.index<-sample(seq(1,length(y)),length(y)*frac)
+	
+		 attr(train.index, "classes") <- classes;
+	}
+	dsplit=split80_20(data,y, train.index)
+	train=list(data=dsplit$train,y=dsplit$ytr)
+	test=list(data=dsplit$test,y=dsplit$yts)
+	combined = list(data = data, y = y)
+	list(test=test,train=train, combined = combined, classes = classes, train.index =train.index)
 }
