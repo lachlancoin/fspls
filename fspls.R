@@ -74,16 +74,16 @@ function(vec,na.replace = NA){
 
 .cntNA<-function(vec) length(which(is.na(vec)))
 
- fitModel<-function(yTr,x,offset, indices=attr(yTr,"indices"),family=getOption("family","binomial"),  useBF = getOption("useBF",FALSE)){
+ fitModel<-function(yTr,x,offset, weights = NULL, indices=attr(yTr,"indices"),family=getOption("family","binomial"),  useBF = getOption("useBF",FALSE)){
     ll=0
     n = dim(x)[2]
     if(family!="multinomial"){
-	    if(n==0) lm<-glm(yTr~offset(offset),family=family)
-	    else lm<-glm(yTr~x+offset(offset),family=family)
+	    if(n==0) lm<-glm(yTr~offset(offset),family=family) #no weights used for calculating offset
+	    else lm<-glm(yTr~x+offset(offset),family=family, weights = as.vector(weights))
     }else{
         offset = cbind(rep(0,dim(offset)[1]),offset)
-        if(n==0) invisible(capture.output({lm<-multinom(yTr~offset(offset))}))
-        else invisible(capture.output({lm<-multinom(yTr~x+offset(offset))}))
+        if(n==0) invisible(capture.output({lm<-multinom(yTr~offset(offset))})) #no weights used for calculating offset
+        else invisible(capture.output({lm<-multinom(yTr~x+offset(offset), weights = as.vector(weights))}))
     }
     if(useBF){
         coe = summary(lm)$coeff
@@ -94,25 +94,29 @@ function(vec,na.replace = NA){
     ll
 }
 
- fitModelShrink<-function(yTr,x,offset,family=getOption("family","binomial"),  useBF = getOption("useBF",FALSE), lambda =0){
+ fitModelShrink<-function(yTr,x,offset, weights = NULL, family=getOption("family","binomial"),  useBF = getOption("useBF",FALSE), lambda =0){
     #if((family=="binomial" || family=="multinomial") && getOption("method","fspls")=="fspls") alpha1 = 0
     #else alpha1 = 1
     alpha = getOption("alpha",0)
     ones = rep(1,length(yTr))
     x2 = cbind(x,ones)
     y2 = yTr
+    if (family == 'multinomial') offset = cbind(rep(0,dim(offset)[1]),offset)
     if(is.null(lambda)){
-        aa = cv.glmnet(x2,y2,family=family, alpha = alpha, offset=offset)
+        aa = cv.glmnet(x2,y2,family=family, weights = weights, alpha = alpha, offset=offset) #error may appear here if classes are linearly separable (but not stricly). See https://stats.stackexchange.com/questions/21315/error-when-running-glmnet-in-multinomial
         aamin = which(aa$cvm==min(aa$cvm))
         indsa = which(aa$cvm>=aa$cvlo[aamin] & aa$cvm <=aa$cvup[aamin])
         lambda =  max(aa$lambda[aamin])
     }
     if(family!="multinomial"){
-        ridge = glmnet(x2,y2,family=family,lambda = lambda, alpha = alpha, offset=offset, intercept = F)
+        ridge = glmnet(x2,y2,family=family,weights = weights, lambda = lambda, alpha = alpha, offset=offset, intercept = F)
         rbeta <- coef(ridge,s="lambda.1se")
         coeffNew = as.matrix(rbeta[-length(rbeta)])
     }else{
-        ridge = glmnet(x2,y2,family=family,lambda = lambda, alpha = alpha, offset=offset, intercept = F)
+        print(dim(y2))
+        print(dim(offset))
+        print('y2 and offset here')
+        ridge = glmnet(x2,y2,family=family,weights = weights, lambda = lambda, alpha = alpha, offset=offset, intercept = F)
         rbeta <- coef(ridge,s="lambda.1se")
         rbeta = matrix(unlist(lapply(rbeta,as.matrix)),nrow=dim(x)[2]+2)
         rbeta = rbeta-rbeta[,1]
@@ -126,7 +130,7 @@ function(vec,na.replace = NA){
 #variables is a list of variables already selected
 #beta are the weights for those selected variables
 #returns updated beta
-find_best_glm<-function(data, variables, beta, Wall, const_term, var_thresh = 0.001, missThresh = 0.5, fit_coeff = TRUE, refit = FALSE, best_i1 = NULL, excl = c()){
+find_best_glm<-function(data, variables, beta, Wall, const_term, weights = NULL, var_thresh = 0.001, missThresh = 0.5, fit_coeff = TRUE, refit = FALSE, best_i1 = NULL, excl = c()){
    family=getOption("family","binomial") 
    yTr = data$y
    leny = length(yTr)
@@ -150,8 +154,8 @@ find_best_glm<-function(data, variables, beta, Wall, const_term, var_thresh = 0.
    R = Dall[,variables,drop=F] %*% W
    spll=-Inf
    best_i=0
-   if(pls) ll0 = fitModel(yTr,Dall[,c(),drop=F],offset)
-   else  ll0 = fitModel(yTr,Dall[,variables,drop=F],offset)
+   if(pls) ll0 = fitModel(yTr,Dall[,c(),drop=F],offset) #add weights?
+   else  ll0 = fitModel(yTr,Dall[,variables,drop=F],offset) #add weights?
    start_time = proc.time()
     excl1 = match(excl,todoInds);
    if(length(excl1)>0) todoInds = todoInds[-excl1]
@@ -162,7 +166,7 @@ find_best_glm<-function(data, variables, beta, Wall, const_term, var_thresh = 0.
             else i = i1
 	    x=Dall[,i,drop=F] - R[,i,drop=F]
         if(var(x[,1],na.rm=T)>var_thresh & .cntNA(x[,1])/leny < missThresh){
-          ll = fitModel(yTr,x,offset,indices)
+          ll = fitModel(yTr,x,offset,indices, weights = as.vector(weights))
 		
 
 		      if( ll>spll ){
@@ -192,21 +196,21 @@ find_best_glm<-function(data, variables, beta, Wall, const_term, var_thresh = 0.
   coeff =matrix(0,nrow=length(variables),ncol=LI)
   lambda = getOption("lambda",NULL)
 
-  if(!refit){
+  if(!refit){ #if refit == TRUE, refit is performed in trainModel after call to find_best_glm
     x = Dall[,best_i,drop=F] - R[,best_i,drop=F]
    
     start_time = proc.time()
     if(fit_coeff){
-        coeffNew = fitModelShrink(yTr,x,offset,lambda=lambda)
+        coeffNew = fitModelShrink(yTr,x,offset,lambda=lambda, weights = as.vector(weights))
     }else{
         if(family!="multinomial"){
-            model<-glm(yTr~x,family=family,offset=offset)
+            model<-glm(yTr~x,family=family,offset=offset, weights = as.vector(weights))
         
             coeffNew = summary(model)$coeff[,1,drop=F]
             delta = coeffNew[dim(x)[2]+1]
             beta = beta-delta*W[,best_i[length(best_i)]]
         }else{
-            invisible(capture.output({model<-multinom(yTr~x,offset=cbind(rep(0,dim(offset)[1]),offset))}))
+            invisible(capture.output({model<-multinom(yTr~x,offset=cbind(rep(0,dim(offset)[1]),offset), weights = as.vector(weights))}))
             coeffNew = t(summary(model)$coeff)
             if(dim(beta)[1]>0){
                 delta = .rep(coeffNew[dim(x)[2]+1,],dim(beta)[1])*t(.rep(W[,best_i[length(best_i)]],dim(beta)[2]))
@@ -482,7 +486,7 @@ evalModels<-function(coeff,vars,data, Wall, const =0,
 #refit - do we keep the coeff trained for each variable separately, or refit as we go
 # you can already specificy variables and beta selected
 
-trainModel<-function(trainOriginal, pv_thresh = 0.01, max = min(25, dim(trainOriginal$data)[[2]]), var_thresh = 0.01, project = TRUE, 
+trainModel<-function(trainOriginal, pv_thresh = 0.01, max = min(25, dim(trainOriginal$data)[[2]]),  weights = NULL, var_thresh = 0.01, project = TRUE, 
 	 info = list(),pivot = 0, fit_coeff = TRUE, testOriginal = NULL, refit = FALSE, log = NULL, append = FALSE, sel_vars = NULL, excl = c()){
   proc_start_time = proc.time()
   pv_thresh1 = 1.0;
@@ -531,7 +535,7 @@ trainModel<-function(trainOriginal, pv_thresh = 0.01, max = min(25, dim(trainOri
 	if(!is.null(best_i)) pv_thresh1 = 1.0 else pv_thresh1 = pv_thresh      
 
       start_time <- proc.time()
-      model_fit=find_best_glm(train, variables, beta, Wall, const_term=constant_term, var_thresh =var_thresh, fit_coeff = fit_coeff, refit=refit, best_i = best_i, excl = excl)
+      model_fit=find_best_glm(train, variables, beta, Wall, const_term=constant_term, weights = weights, var_thresh =var_thresh, fit_coeff = fit_coeff, refit=refit, best_i = best_i, excl = excl)
 	
       print(paste("&find_best_glm,",proc.time()[3]-start_time[3]))
       lambdas = c(lambdas,model_fit$lambda)
