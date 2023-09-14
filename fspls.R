@@ -78,7 +78,7 @@ function(vec,na.replace = NA){
     ll=0
     n = dim(x)[2]
     if(family!="multinomial"){
-	    if(n==0) lm<-glm(yTr~offset(offset),family=family) #no weights used for calculating offset
+	    if(n==0) lm<-glm(yTr~(offset),family=family) #no weights used for calculating offset
 	    else lm<-glm(yTr~x+offset(offset),family=family, weights = as.vector(weights))
     }else{
         offset = cbind(rep(0,dim(offset)[1]),offset)
@@ -99,11 +99,11 @@ function(vec,na.replace = NA){
     #else alpha1 = 1
     alpha = getOption("alpha",0)
     ones = rep(1,length(yTr))
-    x2 = cbind(x,ones)
+    x2 = cbind(x,runif(n = nrow(x2), min = 0.99, max = 1.01))
     y2 = yTr
     if (family == 'multinomial') offset = cbind(rep(0,dim(offset)[1]),offset)
     if(is.null(lambda)){
-        aa = cv.glmnet(x2,y2,family=family, weights = weights, alpha = alpha, offset=offset) #error may appear here if classes are linearly separable (but not stricly). See https://stats.stackexchange.com/questions/21315/error-when-running-glmnet-in-multinomial
+        aa = cv.glmnet(x2,y2,family=family, weights = as.vector(weights), alpha = alpha, offset=offset) #error may appear here if classes are linearly separable (but not stricly). See https://stats.stackexchange.com/questions/21315/error-when-running-glmnet-in-multinomial
         aamin = which(aa$cvm==min(aa$cvm))
         indsa = which(aa$cvm>=aa$cvlo[aamin] & aa$cvm <=aa$cvup[aamin])
         lambda =  max(aa$lambda[aamin])
@@ -116,7 +116,7 @@ function(vec,na.replace = NA){
         print(dim(y2))
         print(dim(offset))
         print('y2 and offset here')
-        ridge = glmnet(x2,y2,family=family,weights = weights, lambda = lambda, alpha = alpha, offset=offset, intercept = F)
+        ridge = glmnet(x2,y2,family=family,weights = as.vector(weights), lambda = lambda, alpha = alpha, offset=offset, intercept = F)
         rbeta <- coef(ridge,s="lambda.1se")
         rbeta = matrix(unlist(lapply(rbeta,as.matrix)),nrow=dim(x)[2]+2)
         rbeta = rbeta-rbeta[,1]
