@@ -74,6 +74,8 @@ function(vec,na.replace = NA){
 
 .cntNA<-function(vec) length(which(is.na(vec)))
 
+
+#fitModel gets the log likelihood of the selected variable, after fitting beta
  fitModel<-function(yTr,x,offset, weights = NULL, indices=attr(yTr,"indices"),family=getOption("family","binomial"),  useBF = getOption("useBF",FALSE)){
     ll=0
     n = dim(x)[2]
@@ -94,11 +96,13 @@ function(vec,na.replace = NA){
     ll
 }
 
+
  fitModelShrink<-function(yTr,x,offset, weights = NULL, family=getOption("family","binomial"),  useBF = getOption("useBF",FALSE), lambda =0){
     #if((family=="binomial" || family=="multinomial") && getOption("method","fspls")=="fspls") alpha1 = 0
     #else alpha1 = 1
     alpha = getOption("alpha",0)
     ones = rep(1,length(yTr))
+
     x2 = cbind(x,runif(n = nrow(x2), min = 0.99, max = 1.01)) #exchange second vector of 1s for a narrow random distribution to introduce som variation. This prevents the error shown for `aa = cv.glmnet ....` below
     y2 = yTr
     if (family == 'multinomial') offset = cbind(rep(0,dim(offset)[1]),offset)
@@ -109,13 +113,11 @@ function(vec,na.replace = NA){
         lambda =  max(aa$lambda[aamin])
     }
     if(family!="multinomial"){
+
         ridge = glmnet(x2,y2,family=family,weights = weights, lambda = lambda, alpha = alpha, offset=offset, intercept = F)
         rbeta <- coef(ridge,s="lambda.1se")
         coeffNew = as.matrix(rbeta[-length(rbeta)])
     }else{
-        print(dim(y2))
-        print(dim(offset))
-        print('y2 and offset here')
         ridge = glmnet(x2,y2,family=family,weights = as.vector(weights), lambda = lambda, alpha = alpha, offset=offset, intercept = F)
         rbeta <- coef(ridge,s="lambda.1se")
         rbeta = matrix(unlist(lapply(rbeta,as.matrix)),nrow=dim(x)[2]+2)
@@ -130,7 +132,9 @@ function(vec,na.replace = NA){
 #variables is a list of variables already selected
 #beta are the weights for those selected variables
 #returns updated beta
+
 find_best_glm<-function(data, variables, beta, Wall, const_term, weights = NULL, var_thresh = 0.001, missThresh = 0.5, fit_coeff = TRUE, refit = FALSE, best_i1 = NULL, excl = c()){
+
    family=getOption("family","binomial") 
    yTr = data$y
    leny = length(yTr)
@@ -138,8 +142,8 @@ find_best_glm<-function(data, variables, beta, Wall, const_term, weights = NULL,
    pls = (getOption("method","fspls")=="fspls")
    Dall = as.matrix(data$data)
    #offset = .rep(const_term,leny)
-   if(fit_coeff || family=="gaussian") offset = .rep(const_term,leny)
-   else offset = .rep(rep(0,LI),leny)
+   if (fit_coeff || family=="gaussian")  { offset = .rep(const_term,leny) 
+   }    else { offset = .rep(rep(0,LI),leny) }
    W = matrix(0,nrow=length(variables),ncol = dim(Dall)[[2]])
    todoInds = 1:dim(Dall)[[2]]
    if(length(variables>=1)){
@@ -151,22 +155,26 @@ find_best_glm<-function(data, variables, beta, Wall, const_term, weights = NULL,
      }
    }
 
-   R = Dall[,variables,drop=F] %*% W
+   R = Dall[,variables,drop=F] %*% W #W has ncol matching total number of features in data
    spll=-Inf
    best_i=0
-   if(pls) ll0 = fitModel(yTr,Dall[,c(),drop=F],offset) #add weights?
-   else  ll0 = fitModel(yTr,Dall[,variables,drop=F],offset) #add weights?
+   if(pls)  { ll0 = fitModel(yTr,Dall[,c(),drop=F],offset, weights = weights) #the null model
+   }  else  { ll0 = fitModel(yTr,Dall[,variables,drop=F],offset, weights = weights) }
+
    start_time = proc.time()
     excl1 = match(excl,todoInds);
    if(length(excl1)>0) todoInds = todoInds[-excl1]
   
    if(!is.null(best_i1)) todoInds = todoInds[which(todoInds==best_i1)];
+
+    #This is the loop to go through all variables and find feature with maxmimum log likelihood
    for (i1 in todoInds){
-	    if(!pls) i = c(variables,i1)
-            else i = i1
-	    x=Dall[,i,drop=F] - R[,i,drop=F]
+	    if(!pls) { i = c(variables,i1)
+            } else { i = i1 }
+	    x=Dall[,i,drop=F] - R[,i,drop=F] #orthogonalise variable before fitting
         if(var(x[,1],na.rm=T)>var_thresh & .cntNA(x[,1])/leny < missThresh){
           ll = fitModel(yTr,x,offset,indices, weights = as.vector(weights))
+
 		
 
 		      if( ll>spll ){
@@ -196,23 +204,29 @@ find_best_glm<-function(data, variables, beta, Wall, const_term, weights = NULL,
   coeff =matrix(0,nrow=length(variables),ncol=LI)
   lambda = getOption("lambda",NULL)
 
-  if(!refit){ #if refit == TRUE, refit is performed in trainModel after call to find_best_glm
-    x = Dall[,best_i,drop=F] - R[,best_i,drop=F]
+
+  if(!refit){
+    #refit is almost always FALSE now
+    x = Dall[,best_i,drop=F] - R[,best_i,drop=F] #R is the component of the variable that is non-orthogonal to previously selected variables, so x is a vector of the new chosen variable that has previous variables projection removed.
    
     start_time = proc.time()
+    #this section gets the actual co-efficient for the newly selected variable `best_i` (once deflated)
     if(fit_coeff){
         coeffNew = fitModelShrink(yTr,x,offset,lambda=lambda, weights = as.vector(weights))
     }else{
         if(family!="multinomial"){
             model<-glm(yTr~x,family=family,offset=offset, weights = as.vector(weights))
+
         
             coeffNew = summary(model)$coeff[,1,drop=F]
             delta = coeffNew[dim(x)[2]+1]
             beta = beta-delta*W[,best_i[length(best_i)]]
         }else{
+
             invisible(capture.output({model<-multinom(yTr~x,offset=cbind(rep(0,dim(offset)[1]),offset), weights = as.vector(weights))}))
             coeffNew = t(summary(model)$coeff)
             if(dim(beta)[1]>0){
+              #What's the delta do?
                 delta = .rep(coeffNew[dim(x)[2]+1,],dim(beta)[1])*t(.rep(W[,best_i[length(best_i)]],dim(beta)[2]))
                 beta = beta-delta
             }
@@ -290,14 +304,24 @@ abf <- function( fit, w=.21*.21 ){
 ### this calculates the predicted linear values
 pred<-function(coeff, vars,data, Wall = diag(rep(1,length(vars))), const = 0, 
 	means = if(length(vars)==0) c(0) else apply(data$data[,vars,drop=F],2,mean,na.rm=T)){
-   testD = data$data1
-   if(is.null(testD)) testD=data$data
-   len = dim(testD)[1]
-   xM = const
-   if(length(vars)>0) {
-  	   xM = .rep(xM - means %*% (Wall %*% coeff),len)
-       #xM = rep(xM,len)
-       xM = xM + (as.matrix(testD[,vars])%*% Wall %*%  coeff)
+
+  
+  #remember - model never records the orthogonalised data, just the transformation in order to achieve it.
+  #coeff is the betas of the model of length=n_variables
+  #vars = selected variables
+  #data = list of $data (centralised?), $y (response), $data1 (original X)
+  #Wall = transformatinon of betas from orthogonal space back to normal space.
+  #const = constant term for each class
+  #means is feature means for selected variables.
+  
+   testD = data$data1 #original data to be tested
+   if(is.null(testD)) testD=data$data #if that's not there, just used the data in $data slot (not preprocessed)
+   len = dim(testD)[1] #number of samples
+   xM = const # set xM to constant term
+   if(length(vars)>0) { #if variables have been included (ie. not just intercept)
+  	   xM = .rep(xM - means %*% (Wall %*% coeff),len) #this creates an offset matrix, consistent for every sample
+       xM = xM + (as.matrix(testD[,vars])%*% Wall %*%  coeff) #offset matrix + testData %*% de-orthoganalising transformation %*% betas
+
    }else{
  	   xM = matrix(NA,ncol = length(const),nrow = len)
 	   for(k1 in 1:len){
@@ -486,8 +510,10 @@ evalModels<-function(coeff,vars,data, Wall, const =0,
 #refit - do we keep the coeff trained for each variable separately, or refit as we go
 # you can already specificy variables and beta selected
 
-trainModel<-function(trainOriginal, pv_thresh = 0.01, max = min(25, dim(trainOriginal$data)[[2]]),  weights = NULL, var_thresh = 0.01, project = TRUE, 
-	 info = list(),pivot = 0, fit_coeff = TRUE, testOriginal = NULL, refit = FALSE, log = NULL, append = FALSE, sel_vars = NULL, excl = c()){
+
+trainModel<-function(trainOriginal, pv_thresh = 0.01, max = min(25, dim(trainOriginal$data)[[2]]), min =2, var_thresh = 0.01, project = TRUE, 
+	 info = list(),pivot = 0, fit_coeff = TRUE, testOriginal = NULL, refit = FALSE, log = NULL, append = FALSE, sel_vars = NULL, excl = c(), center_scale = NULL, weights = NULL){
+
   proc_start_time = proc.time()
   pv_thresh1 = 1.0;
   toremove = which(sel_vars %in% excl)
@@ -497,7 +523,9 @@ trainModel<-function(trainOriginal, pv_thresh = 0.01, max = min(25, dim(trainOri
   spval=0.0
   if(max>dim(trainOriginal$data)[[2]]) max = dim(trainOriginal$data)[[2]]
   if(getOption("family","binomial")=="multinomial" && is.null(pivot)) stop("Invalid pivot provide.")
-  if(fit_coeff || getOption("family","binomial")=="gaussian"){
+
+  if(fit_coeff || getOption("family","binomial")=="gaussian" & center_scale != F){
+
     train = preprocess(trainOriginal,pivot = pivot)
   }else{
     train = preprocess(trainOriginal, centralise = FALSE, pivot=pivot)
@@ -516,7 +544,10 @@ trainModel<-function(trainOriginal, pv_thresh = 0.01, max = min(25, dim(trainOri
   print(constant_term1)
   variables = c()
   contains = c()
-  eval =  evalModels(beta, variables,train,Wall, const = constant_term1, means = means[variables], ind = 0, fit_coeff = fit_coeff)
+
+  eval =  evalModels(beta, variables,train,Wall, const = constant_term1, means = means[variables], ind = 0, fit_coeff = fit_coeff) 
+  #need to incorporate weighting in evaluation, but that can be done separately from weighting the samples in training
+
   if(!is.null(test)){
  	 evalT = evalModels(beta, variables,test,Wall, const = constant_term1, means = means[variables], ind = 0, fit_coeff = fit_coeff)
 	print(c(eval,evalT))
@@ -528,14 +559,19 @@ trainModel<-function(trainOriginal, pv_thresh = 0.01, max = min(25, dim(trainOri
   global_index=length(variables)+1
   spvals = c()
   lambdas = c()
-  while(global_index<=max && spval <=pv_thresh1 && length(contains)<=1){
+
+  while(global_index<=max && spval <=pv_thresh1 | global_index <=min && length(contains)<=1){
+
 	  print(paste("index",global_index))
 	best_i = NULL;
 	if(global_index<=length(sel_vars)) best_i = sel_vars[global_index]
 	if(!is.null(best_i)) pv_thresh1 = 1.0 else pv_thresh1 = pv_thresh      
 
       start_time <- proc.time()
-      model_fit=find_best_glm(train, variables, beta, Wall, const_term=constant_term, weights = weights, var_thresh =var_thresh, fit_coeff = fit_coeff, refit=refit, best_i = best_i, excl = excl)
+
+      model_fit=find_best_glm(train, variables, beta, Wall, const_term=constant_term, var_thresh =var_thresh, fit_coeff = fit_coeff, 
+                              refit=refit, best_i = best_i, excl = excl, weights = weights) #now incorporates weights
+
 	
       print(paste("&find_best_glm,",proc.time()[3]-start_time[3]))
       lambdas = c(lambdas,model_fit$lambda)
@@ -543,7 +579,9 @@ trainModel<-function(trainOriginal, pv_thresh = 0.01, max = min(25, dim(trainOri
 	  lastVar = varia[length(varia)]
       contains = which(varia==lastVar)
 	  spval=model_fit$pval[1] # pval of selected model
-      if(length(contains) <=1 && spval <= pv_thresh1){
+
+      if(length(contains) <=1 && spval <= pv_thresh1 | global_index <=min){
+        if (spval > pv_thresh1) message(paste('forced selection'))
         variables = varia
         spvals = c(spvals,spval)
 	    beta = model_fit$coeff
@@ -551,7 +589,9 @@ trainModel<-function(trainOriginal, pv_thresh = 0.01, max = min(25, dim(trainOri
         print(Wall)
         constant_term = model_fit$const_term
         start_time = proc.time()
-        if(refit){
+
+        if(refit){ #always false, TRUE option doesn't help modelling much
+
             model_refit = refit_model(train,variables,beta,constant_term)
             beta = model_refit$beta
             constant_term = model_refit$const
@@ -565,6 +605,9 @@ trainModel<-function(trainOriginal, pv_thresh = 0.01, max = min(25, dim(trainOri
         print(paste("const",constant_term))
         print(paste("pvals",paste(spvals,collapse=" ")))
         eval1 = evalModels(beta, variables,train,Wall, const = constant_term, means = means[variables], ind = global_index, fit_coeff = fit_coeff)
+
+        #weighted accuracy to come in later
+
 	    eval1T1 =evalModels(beta, variables,test,Wall, const = constant_term, means = means[variables], ind = global_index, fit_coeff = fit_coeff)
 	    eval = rbind(eval,eval1)
 	    evalT = rbind(evalT,eval1T1)
