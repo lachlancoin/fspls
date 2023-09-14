@@ -74,16 +74,17 @@ function(vec,na.replace = NA){
 
 .cntNA<-function(vec) length(which(is.na(vec)))
 
+#fitModel gets the log likelihood of the selected variable, after fitting beta
  fitModel<-function(yTr,x,offset, indices=attr(yTr,"indices"),family=getOption("family","binomial"),  useBF = getOption("useBF",FALSE), weights = NULL){
     ll=0
     n = dim(x)[2]
     if(family!="multinomial"){
-	    if(n==0) lm<-glm(yTr~offset(offset),family=family, weights = weights)
+	    if(n==0) lm<-glm(yTr~offset(offset),family=family) #, weights = weights)
 	    else lm<-glm(yTr~x+offset(offset),family=family, weights = weights)
     }else{
         offset = cbind(rep(0,dim(offset)[1]),offset)
-        if(n==0) invisible(capture.output({lm<-multinom(yTr~offset(offset), weights = weights)}))
-        else invisible(capture.output({lm<-multinom(yTr~x+offset(offset), weights = weights)}))
+        if(n==0) invisible(capture.output({lm<-multinom(yTr~offset(offset))})) #, weights = weights)})) #multinom fails when weights are included without sample data
+        else invisible(capture.output({lm<-multinom(yTr~x+offset(offset), weights = weights) })) #multinomial 
     }
     if(useBF){
         coe = summary(lm)$coeff
@@ -134,8 +135,8 @@ find_best_glm<-function(data, variables, beta, Wall, const_term, var_thresh = 0.
    pls = (getOption("method","fspls")=="fspls")
    Dall = as.matrix(data$data)
    #offset = .rep(const_term,leny)
-   if(fit_coeff || family=="gaussian") offset = .rep(const_term,leny)
-   else offset = .rep(rep(0,LI),leny)
+   if (fit_coeff || family=="gaussian")  { offset = .rep(const_term,leny) 
+   }    else { offset = .rep(rep(0,LI),leny) }
    W = matrix(0,nrow=length(variables),ncol = dim(Dall)[[2]])
    todoInds = 1:dim(Dall)[[2]]
    if(length(variables>=1)){
@@ -147,23 +148,23 @@ find_best_glm<-function(data, variables, beta, Wall, const_term, var_thresh = 0.
      }
    }
 
-   R = Dall[,variables,drop=F] %*% W
+   R = Dall[,variables,drop=F] %*% W #W has ncol matching total number of features in data
    spll=-Inf
    best_i=0
-   if(pls) ll0 = fitModel(yTr,Dall[,c(),drop=F],offset, weights = NULL)
-   else  ll0 = fitModel(yTr,Dall[,variables,drop=F],offset, weights = NULL)
+   if(pls)  { ll0 = fitModel(yTr,Dall[,c(),drop=F],offset, weights = weights) #the null model
+   }  else  { ll0 = fitModel(yTr,Dall[,variables,drop=F],offset, weights = weights) }
    start_time = proc.time()
     excl1 = match(excl,todoInds);
    if(length(excl1)>0) todoInds = todoInds[-excl1]
   
    if(!is.null(best_i1)) todoInds = todoInds[which(todoInds==best_i1)];
-    #This is the loop to go through all variables
+    #This is the loop to go through all variables and find feature with maxmimum log likelihood
    for (i1 in todoInds){
 	    if(!pls) i = c(variables,i1)
             else i = i1
-	    x=Dall[,i,drop=F] - R[,i,drop=F]
+	    x=Dall[,i,drop=F] - R[,i,drop=F] #orthogonalise variable before fitting
         if(var(x[,1],na.rm=T)>var_thresh & .cntNA(x[,1])/leny < missThresh){
-          ll = fitModel(yTr,x,offset,indices, weights = NULL)
+          ll = fitModel(yTr,x,offset,indices, weights = weights)
 		
 
 		      if( ll>spll ){
@@ -194,22 +195,25 @@ find_best_glm<-function(data, variables, beta, Wall, const_term, var_thresh = 0.
   lambda = getOption("lambda",NULL)
 
   if(!refit){
-    x = Dall[,best_i,drop=F] - R[,best_i,drop=F]
+    #refit is almost always FALSE now
+    x = Dall[,best_i,drop=F] - R[,best_i,drop=F] #R is the component of the variable that is non-orthogonal to previously selected variables, so x is a vector of the new chosen variable that has previous variables projection removed.
    
     start_time = proc.time()
+    #this section gets the actual co-efficient for the newly selected variable `best_i` (once deflated)
     if(fit_coeff){
         coeffNew = fitModelShrink(yTr,x,offset,lambda=lambda)
     }else{
         if(family!="multinomial"){
-            model<-glm(yTr~x,family=family,offset=offset, weights = NULL)
+            model<-glm(yTr~x,family=family,offset=offset, weights = weights)
         
             coeffNew = summary(model)$coeff[,1,drop=F]
             delta = coeffNew[dim(x)[2]+1]
             beta = beta-delta*W[,best_i[length(best_i)]]
         }else{
-            invisible(capture.output({model<-multinom(yTr~x,offset=cbind(rep(0,dim(offset)[1]),offset), weights = NULL)}))
+            invisible(capture.output({model<-multinom(yTr~x,offset=cbind(rep(0,dim(offset)[1]),offset), weights = weights)}))
             coeffNew = t(summary(model)$coeff)
             if(dim(beta)[1]>0){
+              #What's the delta do?
                 delta = .rep(coeffNew[dim(x)[2]+1,],dim(beta)[1])*t(.rep(W[,best_i[length(best_i)]],dim(beta)[2]))
                 beta = beta-delta
             }
@@ -543,6 +547,8 @@ trainModel<-function(trainOriginal, pv_thresh = 0.01, max = min(25, dim(trainOri
 	if(!is.null(best_i)) pv_thresh1 = 1.0 else pv_thresh1 = pv_thresh      
 
       start_time <- proc.time()
+      print('weights:')
+      print(weights)
       model_fit=find_best_glm(train, variables, beta, Wall, const_term=constant_term, var_thresh =var_thresh, fit_coeff = fit_coeff, 
                               refit=refit, best_i = best_i, excl = excl, weights = weights) #follow through this function to ensure incorporation of weights
 	
@@ -576,7 +582,7 @@ trainModel<-function(trainOriginal, pv_thresh = 0.01, max = min(25, dim(trainOri
         print(paste("const",constant_term))
         print(paste("pvals",paste(spvals,collapse=" ")))
         eval1 = evalModels(beta, variables,train,Wall, const = constant_term, means = means[variables], ind = global_index, fit_coeff = fit_coeff)
-        #weights to come in later
+        #weighted accuracy to come in later
 	    eval1T1 =evalModels(beta, variables,test,Wall, const = constant_term, means = means[variables], ind = global_index, fit_coeff = fit_coeff)
 	    eval = rbind(eval,eval1)
 	    evalT = rbind(evalT,eval1T1)
