@@ -103,7 +103,7 @@ function(vec,na.replace = NA){
     alpha = getOption("alpha",0)
     ones = rep(1,length(yTr))
 
-    x2 = cbind(x,runif(n = nrow(x2), min = 0.99, max = 1.01)) #exchange second vector of 1s for a narrow random distribution to introduce som variation. This prevents the error shown for `aa = cv.glmnet ....` below
+    x2 = cbind(x,runif(n = nrow(x), min = 0.99, max = 1.01)) #exchange second vector of 1s for a narrow random distribution to introduce som variation. This prevents the error shown for `aa = cv.glmnet ....` below
     y2 = yTr
     if (family == 'multinomial') offset = cbind(rep(0,dim(offset)[1]),offset)
     if(is.null(lambda)){
