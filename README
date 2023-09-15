@@ -3,14 +3,17 @@
     (2) testOriginal; # same as trainOriginal, for testing, default NULL
     (3) pv_thresh; # p-value threshold for selecting a variable/terminating, default 0.01
     (4) max; # maximum variables to select for the model, default minimun of 25 and varaible amount
-    (5) var_thresh; # variance (minimum) threshold for considering a variable, default 0.01
-    (6) project; # decide whether to project variables, TURE for fspls and FALSE for fs, default TRUE
-    (7) info; # dummy parameter from previous version, default empty list
-    (8) pivot; # pivot for (multi) logistic regression, default 0
-    (9) fit_coeff <new added>; # decide whether to fit coefficients, set it as FALSE to keep consistent with the previous version that only select variables, default TRUE
-    (10) log <new added>; # log file name, run program in a silence mode with a log, default NULL
-    (11) append <new added>; # decide whether to append the outputs to the log file, default FALSE
-    (12) refit <new added>; # decide whether to refit the model at the end, default FALSE
+    (5) min <new added>; # minimum number of variables to select for the model. defaults to 2
+    (6) var_thresh; # variance (minimum) threshold for considering a variable, default 0.01
+    (7) project; # decide whether to project variables, TURE for fspls and FALSE for fs, default TRUE
+    (8) info; # dummy parameter from previous version, default empty list
+    (9) pivot; # pivot for (multi) logistic regression, default 0
+    (10) fit_coeff; # decide whether to fit coefficients, set it as FALSE to keep consistent with the previous version that only select variables, default TRUE
+    (11) log; # log file name, run program in a silence mode with a log, default NULL
+    (12) append; # decide whether to append the outputs to the log file, default FALSE
+    (13) refit; # decide whether to refit the model at the end, default FALSE
+    (14) center_scale <new added>; #decide whether to center and scale features in training data. Applies only to gaussian family. Test data is not centered or scaled. Default TRUE
+    (15) weights <new added>; #a vector of training weights with `length = nobs` to be used in selecting features and fitting co-efficients. Default NULL (equal weighting)
 
 2. Bug Fixed
     (1) add 'means = means[variables]' in line 529 and 530 (using default in previous versions)
