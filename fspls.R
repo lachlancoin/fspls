@@ -101,7 +101,7 @@ function(vec,na.replace = NA){
     #if((family=="binomial" || family=="multinomial") && getOption("method","fspls")=="fspls") alpha1 = 0
     #else alpha1 = 1
     alpha = getOption("alpha",0)
-    ones = rep(1,length(yTr))
+    #ones = rep(1,length(yTr))
 
     x2 = cbind(x,runif(n = nrow(x), min = 0.99, max = 1.01)) #exchange second vector of 1s for a narrow random distribution to introduce som variation. This prevents the error shown for `aa = cv.glmnet ....` below
     y2 = yTr
@@ -484,6 +484,7 @@ evalModels<-function(coeff,vars,data, Wall, const =0,
    auc = NA
    acc = NA
    rms = NA
+   dev = NA
    if(getOption("family","binomial")=="binomial"){
        ybin = liability(ypred)
 	#print('calc AUC');
@@ -491,15 +492,17 @@ evalModels<-function(coeff,vars,data, Wall, const =0,
        auc = calcAUC(ypred,data$y)
        rms = calcRMS(ybin,data$y)
        acc = calcACC(ypred,data$y)
+       dev = calcDEV(ypred, data$y)
    }else if(getOption("family","binomial")=="multinomial"){
        ybin = liability(ypred)
        ypred0 = as.numeric(ybin)
        acc = sum(ypred0==data$y)/length(ypred0)
+       dev = calcDEV(ypred, data$y)
    }else{
        rms = calcRMS(ypred,data$y)
    }
-   eval = c(ind,rms,auc,acc)
-   names(eval) = c("ind","rms","auc","acc")
+   eval = c(ind,rms,auc,acc, dev)
+   names(eval) = c("ind","rms","auc","acc", "dev")
    eval
 }
                     
@@ -701,15 +704,16 @@ calcRMS<-function( predy,yTs){
 
 ##this just returns the auc
 #vars are indices referring to data$data
+#this only gets called if family is binomial.
 calcAUC<-function(ypred,y){
-    yTs = as.numeric(y)
-    x = as.numeric(ypred)
+    yTs = as.numeric(y) #vector of true class
+    x = as.numeric(ypred) #vector of class probabiliy 
     auc = NA
     if(var(x, na.rm=T)>=0 ){
         model<-glm(yTs~x,family=getOption("family","binomial")) 
-	    predictions=predict(model,x=x,type="response")
+	    predictions=predict(model,x=x,type="response") #veector of probabilities
         pred <- prediction(predictions, yTs)
-	    perf <- performance(pred, measure = "tpr", x.measure = "fpr") 
+	    #perf <- performance(pred, measure = "tpr", x.measure = "fpr") 
 	    auc <- performance(pred, measure = "auc")@y.values[[1]]
     }
    auc
@@ -718,7 +722,7 @@ calcAUC<-function(ypred,y){
 #this just returns the acc
 #vars are indices referring to data$data
 calcACC<-function(ypred,y){
-    p=rep(NA,length(ypred))
+    #p=rep(NA,length(ypred))
     yTs = as.numeric(y)
     x = as.numeric(ypred)
     acc = NA
@@ -726,10 +730,38 @@ calcACC<-function(ypred,y){
         model<-glm(yTs~x,family=getOption("family","binomial"))
         predictions=predict(model,x=x,type="response")
         pred <- prediction(predictions, yTs)
-        pref <- performance(pred,measure = "acc")
-        acc <- pref@y.values[[1]][max(which(pref@x.values[[1]]>=.5))]
+        perf <- performance(pred,measure = "acc")
+        acc <- perf@y.values[[1]][max(which(perf@x.values[[1]]>=.5))]
     }
     acc
+}
+
+calcDEV<-function(ypred, y) { #calculates binomial or multinomial deviance to mirror deviance metric in glmnet
+
+  dev = NA
+  #get actual probabilities
+  probs <- t(apply(cbind(1, exp(ypred)), 1, .prob)) #careful here that the t() doesn't erroneously transpose the output of apply
+  colnames(probs) <- attr(ypred, 'levs')
+  
+  #one-hot encode
+  k_classes_identify_matrix <- diag(length(attr(ypred,'levs')))
+  one_hot_true <- k_classes_identify_matrix[y, ] #y is interpreted as the factor level for the class, not as the numeric value for the class itself (so it's safe)
+  
+  #calculate deviance
+  dev <- -2 * sum(one_hot_true * log(probs))
+  
+  
+  # #this function will only be called if family is binomial or multinomial
+  # if (getOption("family","binomial")=="binomial") {
+  #   dev <- -2 * sum(y * log(ypred))
+  # } else if (getOption("family","binomial")=="multinomial") {
+  # 
+  #   k_classes_identify_matrix <- diag(length(attr(ypred,'levs')))
+  #   one_hot_true <- k_classes_identify_matrix[y, ] #y is interpreted as the factor level for the class, not as the numeric value for the class itself (so it's safe)
+  #   
+  #   dev <- -2 * sum(one_hot_true * log(probs))
+  # }
+  return(dev)
 }
 
 ##splits based on a training index which is 0 or F
