@@ -745,7 +745,7 @@ calcDEV<-function(ypred, y) { #calculates binomial or multinomial deviance to mi
   
   #one-hot encode
   k_classes_identify_matrix <- diag(length(attr(ypred,'levs')))
-  one_hot_true <- k_classes_identify_matrix[y, ] #y is interpreted as the factor level for the class, not as the numeric value for the class itself (so it's safe)
+  one_hot_true <- k_classes_identify_matrix[factor(y), ] #y is interpreted as the factor level for the class, not as the numeric value for the class itself (so it's safe)
   
   #calculate deviance
   dev <- -2 * sum(one_hot_true * log(probs))
